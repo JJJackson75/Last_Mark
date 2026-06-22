@@ -1,0 +1,25 @@
+{
+  "name": "Last Mark — Game Retrieval",
+  "short_name": "Last Mark",
+  "description": "Mark your shot, track blood sign, navigate to recovery.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1F2620",
+  "theme_color": "#1F2620",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
