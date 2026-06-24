@@ -1,4 +1,4 @@
-const CACHE_NAME = 'last-mark-v1';
+const CACHE_NAME = 'last-mark-v2';
 const SHELL_ASSETS = [
   './index.html',
   './manifest.json',

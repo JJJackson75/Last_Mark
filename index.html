@@ -90,10 +90,34 @@
 
   .trail-line{ stroke: var(--gold); stroke-width:3; stroke-dasharray: 2,8; opacity:0.85; }
 
+  /* ===== COMPASS STRIP ===== */
+  #compassStrip{
+    position:absolute; top:0; left:0; right:0; z-index:11;
+    padding-top: var(--safe-top);
+    height: calc(34px + var(--safe-top));
+    background: rgba(15,18,15,0.94);
+    border-bottom: 1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    backdrop-filter: blur(6px);
+  }
+  #compassArrow{
+    color: var(--blaze-bright);
+    transition: transform 0.15s ease-out;
+    flex-shrink:0;
+  }
+  #compassDeg{
+    font-family: var(--font-mono); font-size:13px; font-weight:700; color: var(--bone);
+    letter-spacing:0.02em; min-width:34px; text-align:right;
+  }
+  #compassDir{
+    font-family: var(--font-display); font-size:12px; font-weight:600; color: var(--gold-bright);
+    text-transform:uppercase; letter-spacing:0.06em; min-width:26px;
+  }
+
   /* ===== TOP HUD ===== */
   #topHud{
     position:absolute; top:0; left:0; right:0; z-index:10;
-    padding: calc(var(--safe-top) + 12px) 14px 10px;
+    padding: calc(var(--safe-top) + 12px + 34px) 14px 10px;
     display:flex; justify-content:space-between; align-items:flex-start;
     pointer-events:none;
   }
@@ -217,6 +241,20 @@
     margin-bottom:7px; display:flex; justify-content:space-between;
   }
   .field-label b{ color: var(--gold-bright); font-family:var(--font-mono); font-size:13px; }
+  .dist-input-wrap{
+    display:flex; align-items:center; gap:5px; background: var(--bg-deep);
+    border:1px solid var(--line); border-radius:7px; padding:3px 8px;
+  }
+  .dist-input-wrap:focus-within{ border-color: var(--gold); }
+  .dist-input{
+    width:56px; background:transparent; border:none; outline:none;
+    color: var(--gold-bright); font-family:var(--font-mono); font-size:14px; font-weight:700;
+    text-align:right; -moz-appearance: textfield;
+  }
+  .dist-input::-webkit-outer-spin-button, .dist-input::-webkit-inner-spin-button{
+    -webkit-appearance:none; margin:0;
+  }
+  .dist-unit{ font-size:11px; color: var(--bone-dim); font-family:var(--font-mono); text-transform:uppercase; }
   input[type="range"]{
     width:100%; height:6px; border-radius:3px; background: var(--line);
     outline:none; -webkit-appearance:none;
@@ -304,6 +342,14 @@
 
   <div id="map"></div>
 
+  <div id="compassStrip">
+    <svg id="compassArrow" viewBox="0 0 24 24" width="15" height="15">
+      <path d="M12 2 L17 14 L12 11 L7 14 Z" fill="currentColor"/>
+    </svg>
+    <span id="compassDeg">—</span>
+    <span id="compassDir">—</span>
+  </div>
+
   <div id="topHud">
     <div class="hud-chip">
       <div class="hud-title"><span class="dot"></span>LAST MARK</div>
@@ -372,7 +418,12 @@
     </div>
 
     <div class="field">
-      <div class="field-label">DISTANCE <b id="distVal">40 m</b></div>
+      <div class="field-label">DISTANCE
+        <span class="dist-input-wrap">
+          <input type="number" id="distInput" class="dist-input" value="40" min="1" max="2000" inputmode="numeric">
+          <span class="dist-unit" id="distUnitLabel">m</span>
+        </span>
+      </div>
       <input type="range" id="distSlider" min="5" max="400" value="40" step="1">
       <div class="quick-dist" id="quickDist"></div>
     </div>
@@ -512,6 +563,21 @@
   }
 
   // ---------- HUD / STATS ----------
+  const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  function bearingToCardinal(deg){
+    const idx = Math.round(((deg % 360) / 22.5)) % 16;
+    return CARDINALS[idx];
+  }
+  function renderCompassStrip(){
+    if(heading === null) return;
+    const deg = Math.round(heading) % 360;
+    $('compassDeg').textContent = `${deg}°`;
+    $('compassDir').textContent = bearingToCardinal(deg);
+    // Arrow always points "up" on screen as a heading indicator (like a ship's bow marker),
+    // rotated to show current facing relative to true north for reference at a glance.
+    $('compassArrow').style.transform = `rotate(${deg}deg)`;
+  }
+
   function refreshStats(){
     const targetPt = trailPins.length ? trailPins[trailPins.length-1] : estPoint;
     if(targetPt && userPos){
@@ -586,7 +652,10 @@
       } else if(e.alpha !== null){
         h = 360 - e.alpha; // Android approx
       }
-      if(h !== null && !isNaN(h)) heading = (h+360)%360;
+      if(h !== null && !isNaN(h)){
+        heading = (h+360)%360;
+        renderCompassStrip();
+      }
     }
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
       // iOS 13+ needs explicit gesture-triggered permission; attempt, ignore failure silently
@@ -679,11 +748,9 @@
   // ---------- MODAL ----------
   function openShotModal(){
     dialBearing = heading !== null ? Math.round(heading) % 360 : 0;
-    dialDistance = 40;
     buildDial();
-    $('distSlider').value = dialDistance;
     renderQuickDist();
-    updateDistLabel();
+    setDistance(40);
     $('shotModal').classList.add('open');
   }
   function closeShotModal(){ $('shotModal').classList.remove('open'); }
@@ -693,24 +760,36 @@
     const wrap = $('quickDist');
     wrap.innerHTML = presets.map(v => `<button data-v="${v}">${v}</button>`).join('');
     wrap.querySelectorAll('button').forEach(b=>{
-      b.onclick = () => { $('distSlider').value = b.dataset.v; updateDistLabel(); };
+      b.onclick = () => { setDistance(parseInt(b.dataset.v)); };
     });
   }
 
-  function updateDistLabel(){
-    const v = parseInt($('distSlider').value);
+  // Single source of truth setter — keeps slider, number input, and dialDistance all in sync.
+  function setDistance(v, opts){
+    opts = opts || {};
+    v = Math.max(1, Math.min(2000, Math.round(v)));
     dialDistance = v; // dialDistance is always in the CURRENTLY selected unit
-    const display = units==='m' ? `${v} m` : `${v} yd`;
-    $('distVal').textContent = display;
+    if(document.activeElement !== $('distInput') || opts.force){
+      $('distInput').value = v;
+    }
+    // slider is capped at its own max/min — clamp just the handle position, not the real value
+    const sliderMax = parseInt($('distSlider').max), sliderMin = parseInt($('distSlider').min);
+    $('distSlider').value = Math.max(sliderMin, Math.min(sliderMax, v));
+    $('distUnitLabel').textContent = units;
     document.querySelectorAll('.quick-dist button').forEach(b=>{
       b.classList.toggle('active', parseInt(b.dataset.v)===v);
     });
   }
 
+  function updateDistLabel(){
+    // Called on slider drag — push slider's value into the shared setter.
+    setDistance(parseInt($('distSlider').value));
+  }
+
   function setUnits(newUnit){
     if(newUnit === units) return;
-    // convert current slider value to the new unit so the physical distance stays the same
-    const currentVal = parseInt($('distSlider').value);
+    // convert current value to the new unit so the physical distance stays the same
+    const currentVal = dialDistance;
     let convertedVal;
     if(newUnit === 'yd'){
       convertedVal = Math.round(currentVal * 1.0936); // m -> yd
@@ -718,10 +797,8 @@
       convertedVal = Math.round(currentVal / 1.0936); // yd -> m
     }
     units = newUnit;
-    convertedVal = Math.max(5, Math.min(450, convertedVal));
-    $('distSlider').value = convertedVal;
     renderQuickDist();
-    updateDistLabel();
+    setDistance(convertedVal);
     refreshStats();
   }
 
@@ -780,12 +857,22 @@
 
   // ---------- WIRE UP ----------
   $('grantBtn').onclick = () => {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      DeviceOrientationEvent.requestPermission().catch(()=>{});
-    }
     $('permGate').classList.add('hidden');
     startGPS();
-    startCompass();
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      DeviceOrientationEvent.requestPermission().then(result => {
+        if(result === 'granted'){
+          startCompass();
+        } else {
+          toast('Compass access denied — you can still set direction manually');
+        }
+      }).catch(()=>{
+        toast('Compass unavailable — set direction manually in Mark Shot');
+      });
+    } else {
+      // Android / browsers without an explicit permission prompt
+      startCompass();
+    }
   };
 
   $('markShotBtn').onclick = markShot;
@@ -794,6 +881,16 @@
   $('closeModal').onclick = closeShotModal;
   $('confirmShot').onclick = confirmShot;
   $('distSlider').oninput = updateDistLabel;
+  $('distInput').oninput = () => {
+    const raw = $('distInput').value;
+    if(raw === '') return; // let them clear it while typing without snapping back
+    setDistance(parseInt(raw) || 0);
+  };
+  $('distInput').onblur = () => {
+    if($('distInput').value === '' || isNaN(parseInt($('distInput').value))){
+      setDistance(dialDistance || 40, {force:true});
+    }
+  };
   $('useHeadingBtn').onclick = () => {
     if(heading === null){ toast('No compass heading available yet'); return; }
     dialBearing = Math.round(heading) % 360;
