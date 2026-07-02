@@ -670,6 +670,7 @@
       disableDefaultUI: true,       // clean HUD look — no stock controls
       gestureHandling: 'greedy',    // single-finger pan (field-friendly)
       backgroundColor: '#1F2620',
+      heading: heading !== null ? heading : 0,  // start rotated to current facing
     });
 
     trailLayerGroup = []; // Google Maps: we just keep an array of overlays
@@ -766,6 +767,8 @@
     // Arrow always points "up" on screen as a heading indicator (like a ship's bow marker),
     // rotated to show current facing relative to true north for reference at a glance.
     $('compassArrow').style.transform = `rotate(${deg}deg)`;
+    // Rotate the map so whichever way you're facing is always at the top
+    if(map) map.setHeading(deg);
   }
 
   function refreshStats(){
