@@ -15,9 +15,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Last Mark">
 
-<!-- Leaflet (OpenStreetMap) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Google Maps -->
+<script>
+  // Google Maps will call window.initGoogleMaps when ready.
+  // We queue initMap until both GPS fix and Maps API are available.
+  window._gmapsReady = false;
+  window._gpsReady = false;
+  window.initGoogleMaps = function(){
+    window._gmapsReady = true;
+    if(window._gpsReady) window._doInitMap && window._doInitMap();
+  };
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB_KA5m_xKXDE1LgA1lai0WuYM7zsYsf0A&callback=initGoogleMaps" async defer></script>
 
 <style>
   :root{
@@ -62,13 +71,9 @@
 
   /* ===== MAP ===== */
   #map{ position:absolute; inset:0; z-index:0; background:var(--bg-deep); filter: saturate(0.55) brightness(0.85) contrast(1.05); }
-  .leaflet-control-attribution{
-    background: rgba(22,27,22,0.7) !important;
-    color: var(--bone-dim) !important;
-    font-size: 9px !important;
-  }
-  .leaflet-control-attribution a{ color: var(--gold) !important; }
-  .leaflet-control-zoom{ display:none; }
+  /* Google Maps attribution sits bottom-right by default — keep it readable */
+  .gm-style .gm-style-cc { filter: invert(0.85) brightness(0.7); }
+  .gmnoprint { opacity: 0.7; }
 
   /* Map markers */
   .pin{
@@ -241,20 +246,24 @@
     margin-bottom:7px; display:flex; justify-content:space-between;
   }
   .field-label b{ color: var(--gold-bright); font-family:var(--font-mono); font-size:13px; }
-  .dist-input-wrap{
-    display:flex; align-items:center; gap:5px; background: var(--bg-deep);
-    border:1px solid var(--line); border-radius:7px; padding:3px 8px;
+  .dist-big-wrap{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background: var(--bg-deep); border:2px solid var(--gold);
+    border-radius:14px; padding:14px 20px; margin-bottom:14px;
   }
-  .dist-input-wrap:focus-within{ border-color: var(--gold); }
-  .dist-input{
-    width:56px; background:transparent; border:none; outline:none;
-    color: var(--gold-bright); font-family:var(--font-mono); font-size:14px; font-weight:700;
+  .dist-big-wrap:focus-within{ border-color: var(--blaze-bright); }
+  .dist-big-input{
+    width:120px; background:transparent; border:none; outline:none;
+    color: var(--gold-bright); font-family:var(--font-mono); font-size:42px; font-weight:700;
     text-align:right; -moz-appearance: textfield;
   }
-  .dist-input::-webkit-outer-spin-button, .dist-input::-webkit-inner-spin-button{
+  .dist-big-input::-webkit-outer-spin-button, .dist-big-input::-webkit-inner-spin-button{
     -webkit-appearance:none; margin:0;
   }
-  .dist-unit{ font-size:11px; color: var(--bone-dim); font-family:var(--font-mono); text-transform:uppercase; }
+  .dist-big-unit{
+    font-size:20px; color: var(--bone-dim); font-family:var(--font-mono);
+    text-transform:uppercase; padding-top:6px;
+  }
   input[type="range"]{
     width:100%; height:6px; border-radius:3px; background: var(--line);
     outline:none; -webkit-appearance:none;
@@ -284,6 +293,75 @@
     text-transform:uppercase; letter-spacing:0.04em; margin-top:6px; cursor:pointer;
   }
   .modal-submit:active{ filter:brightness(0.9); }
+
+  /* ===== AIM BUTTON ===== */
+  .btn-aim{
+    background: rgba(199,85,26,0.15); color: var(--blaze-bright);
+    border: 1.5px solid var(--blaze); border-radius:12px;
+    padding: 12px 10px; font-family: var(--font-display); font-weight:600;
+    font-size:13px; letter-spacing:0.03em; text-transform:uppercase;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    cursor:pointer; transition: background 0.15s;
+  }
+  .btn-aim.active{
+    background: var(--blaze); color: var(--bone);
+  }
+  .btn-aim .btn-icon{ font-size:18px; }
+
+  /* ===== RIFLE SIGHT OVERLAY ===== */
+  #sightOverlay{
+    position:fixed; inset:0; z-index:30;
+    display:none; flex-direction:column;
+    align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  #sightOverlay.active{ display:flex; pointer-events:auto; }
+
+  #sightDimmer{
+    position:absolute; inset:0;
+    background: rgba(10,13,10,0.45);
+    backdrop-filter: blur(1px);
+  }
+
+  #sightWrap{
+    position:relative; z-index:2;
+    display:flex; flex-direction:column; align-items:center;
+    margin-top: -80px; /* nudge toward top half of screen */
+  }
+
+  #sightSvg{
+    width: 300px; height: 300px;
+    touch-action: none; user-select:none;
+    filter: drop-shadow(0 4px 24px rgba(0,0,0,0.7));
+  }
+
+  #sightReadout{
+    display:flex; align-items:baseline; gap:10px; margin-top:12px;
+    font-family:var(--font-mono);
+  }
+  #sightDeg{
+    font-size:38px; font-weight:700; color: var(--gold-bright);
+    letter-spacing:0.02em;
+  }
+  #sightCard{
+    font-size:20px; font-weight:600; color: var(--bone-dim);
+    font-family:var(--font-display); text-transform:uppercase;
+  }
+
+  #sightHint{
+    font-size:10px; color: rgba(237,230,214,0.5);
+    letter-spacing:0.06em; text-transform:uppercase;
+    font-family:var(--font-mono); margin-top:6px; text-align:center;
+    padding:0 20px;
+  }
+
+  #sightActions{
+    position:relative; z-index:2;
+    display:flex; gap:12px;
+    position:absolute; bottom: calc(var(--safe-bottom) + 120px); left:20px; right:20px;
+  }
+  #sightConfirm{ flex:2; padding:16px; font-size:14px; }
+  #sightCancel{ flex:1; padding:16px; font-size:14px; }
 
   /* ===== TOAST ===== */
   #toast{
@@ -397,8 +475,64 @@
       </button>
     </div>
 
+    <div class="btn-row" style="margin-bottom:8px;">
+      <button class="btn btn-aim" id="aimBtn">
+        <span class="btn-icon">⊕</span>Aim at Animal
+      </button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="markShotBtn">
+        <span class="btn-icon">◎</span>Mark Shot
+      </button>
+      <button class="btn btn-secondary" id="addBloodBtn" disabled>
+        <span class="btn-icon">✚</span>Add Sign
+      </button>
+      <button class="btn btn-ghost" id="resetBtn">
+        <span class="btn-icon">↺</span>Reset
+      </button>
+    </div>
+
     <div class="toggle-trail" id="toggleTrail">▾ SHOW TRAIL LOG</div>
     <div class="trail-list" id="trailList"></div>
+  </div>
+
+  <!-- Rifle sight overlay -->
+  <div id="sightOverlay">
+    <div id="sightDimmer"></div>
+    <div id="sightWrap">
+      <svg id="sightSvg" viewBox="0 0 300 300" touch-action="none">
+        <!-- outer ring -->
+        <circle cx="150" cy="150" r="120" stroke="rgba(255,255,255,0.15)" stroke-width="1" fill="none"/>
+        <!-- tick marks -->
+        <g id="sightTicks"></g>
+        <!-- crosshair lines -->
+        <line x1="30"  y1="150" x2="110" y2="150" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+        <line x1="190" y1="150" x2="270" y2="150" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+        <line x1="150" y1="30"  x2="150" y2="110" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+        <line x1="150" y1="190" x2="150" y2="270" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+        <!-- rotating aim arm group -->
+        <g id="aimArm" style="cursor:grab;">
+          <line id="aimLine" x1="150" y1="150" x2="150" y2="35" stroke="#C7551A" stroke-width="3" stroke-linecap="round"/>
+          <!-- arrowhead -->
+          <polygon id="aimHead" points="150,28 143,44 157,44" fill="#C7551A"/>
+          <!-- drag handle circle at tip -->
+          <circle id="aimHandle" cx="150" cy="35" r="14" fill="rgba(199,85,26,0.2)" stroke="#C7551A" stroke-width="2"/>
+        </g>
+        <!-- centre dot -->
+        <circle cx="150" cy="150" r="5" fill="#C7551A"/>
+        <circle cx="150" cy="150" r="2" fill="#EDE6D6"/>
+      </svg>
+      <div id="sightReadout">
+        <span id="sightDeg">0°</span>
+        <span id="sightCard">N</span>
+      </div>
+      <div id="sightHint">DRAG THE ARM TO AIM · TAP CONFIRM TO USE THIS BEARING</div>
+    </div>
+    <div id="sightActions">
+      <button id="sightConfirm" class="btn btn-primary">⊕ Use This Bearing</button>
+      <button id="sightCancel"  class="btn btn-ghost">Cancel</button>
+    </div>
   </div>
 
 </div>
@@ -418,11 +552,10 @@
     </div>
 
     <div class="field">
-      <div class="field-label">DISTANCE
-        <span class="dist-input-wrap">
-          <input type="number" id="distInput" class="dist-input" value="40" min="1" max="2000" inputmode="numeric">
-          <span class="dist-unit" id="distUnitLabel">m</span>
-        </span>
+      <div class="field-label">DISTANCE</div>
+      <div class="dist-big-wrap">
+        <input type="number" id="distInput" class="dist-big-input" value="40" min="1" max="2000" inputmode="numeric">
+        <span class="dist-big-unit" id="distUnitLabel">m</span>
       </div>
       <input type="range" id="distSlider" min="5" max="400" value="40" step="1">
       <div class="quick-dist" id="quickDist"></div>
@@ -494,72 +627,129 @@
   }
 
   // ---------- MAP ----------
+  // ---------- GOOGLE MAPS HELPERS ----------
+  // makeHtmlMarker: wraps a DOM element as a Google Maps overlay so we keep our custom pin styles.
+  function makeHtmlMarker(latlng, html, zIndex){
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    const child = el.firstElementChild;
+    child.style.position = 'absolute';
+    child.style.transform = 'translate(-50%, -50%)';
+    const overlay = new google.maps.OverlayView();
+    overlay.onAdd = function(){
+      this.getPanes().overlayMouseTarget.appendChild(child);
+    };
+    overlay.draw = function(){
+      const proj = this.getProjection();
+      if(!proj) return;
+      const pos = proj.fromLatLngToDivPixel(new google.maps.LatLng(latlng.lat, latlng.lng));
+      child.style.left = pos.x + 'px';
+      child.style.top  = pos.y + 'px';
+      child.style.zIndex = zIndex || 10;
+    };
+    overlay.onRemove = function(){ if(child.parentNode) child.parentNode.removeChild(child); };
+    overlay._latlng = latlng;
+    overlay._el = child;
+    overlay.updateLatLng = function(newLatLng){
+      overlay._latlng = newLatLng;
+      overlay.draw();
+    };
+    overlay.setMap(map);
+    return overlay;
+  }
+
   function initMap(){
-    if(typeof L === 'undefined'){
-      console.warn('Leaflet not loaded — map disabled, core tracking still works.');
+    if(typeof google === 'undefined' || !google.maps){
+      console.warn('Google Maps not loaded — map disabled, core tracking still works.');
       return;
     }
-    map = L.map('map', { zoomControl:false, attributionControl:true }).setView([userPos.lat, userPos.lng], 17);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+    map = new google.maps.Map($('map'), {
+      center: { lat: userPos.lat, lng: userPos.lng },
+      zoom: 17,
+      mapTypeId: 'hybrid',          // satellite + road labels
+      disableDefaultUI: true,       // clean HUD look — no stock controls
+      gestureHandling: 'greedy',    // single-finger pan (field-friendly)
+      backgroundColor: '#1F2620',
+    });
 
-    trailLayerGroup = L.layerGroup().addTo(map);
+    trailLayerGroup = []; // Google Maps: we just keep an array of overlays
 
-    const selfIcon = L.divIcon({ className:'', html:'<div class="pin pin-self"></div>', iconSize:[18,18] });
-    selfMarker = L.marker([userPos.lat, userPos.lng], { icon: selfIcon, zIndexOffset: 1000 }).addTo(map);
-    accCircle = L.circle([userPos.lat, userPos.lng], { radius: userPos.acc||10, color:'#9FCBEF', weight:1, fillOpacity:0.08 }).addTo(map);
+    // Self / accuracy marker
+    selfMarker = makeHtmlMarker(
+      { lat: userPos.lat, lng: userPos.lng },
+      '<div class="pin pin-self"></div>', 20
+    );
+    accCircle = new google.maps.Circle({
+      map,
+      center: { lat: userPos.lat, lng: userPos.lng },
+      radius: userPos.acc || 10,
+      strokeColor: '#9FCBEF', strokeOpacity: 0.5, strokeWeight: 1,
+      fillColor: '#9FCBEF', fillOpacity: 0.06,
+    });
   }
 
   function updateSelfOnMap(){
     if(!map) return;
-    selfMarker.setLatLng([userPos.lat, userPos.lng]);
-    accCircle.setLatLng([userPos.lat, userPos.lng]);
-    accCircle.setRadius(userPos.acc||10);
+    const pos = new google.maps.LatLng(userPos.lat, userPos.lng);
+    selfMarker.updateLatLng({ lat: userPos.lat, lng: userPos.lng });
+    accCircle.setCenter(pos);
+    accCircle.setRadius(userPos.acc || 10);
   }
 
   function placeShotMarker(){
     if(!map) return;
-    if(shotMarker) map.removeLayer(shotMarker);
-    const icon = L.divIcon({ className:'', html:'<div class="pin pin-shot">S</div>', iconSize:[30,30] });
-    shotMarker = L.marker([shotPoint.lat, shotPoint.lng], { icon }).addTo(map);
+    if(shotMarker){ shotMarker.setMap(null); shotMarker = null; }
+    shotMarker = makeHtmlMarker(
+      { lat: shotPoint.lat, lng: shotPoint.lng },
+      '<div class="pin pin-shot">S</div>', 15
+    );
   }
 
   function placeEstMarker(){
     if(!map) return;
-    if(estMarker) map.removeLayer(estMarker);
-    const icon = L.divIcon({ className:'', html:'<div class="pin pin-est">?</div>', iconSize:[30,30] });
-    estMarker = L.marker([estPoint.lat, estPoint.lng], { icon }).addTo(map);
+    if(estMarker){ estMarker.setMap(null); estMarker = null; }
+    estMarker = makeHtmlMarker(
+      { lat: estPoint.lat, lng: estPoint.lng },
+      '<div class="pin pin-est">?</div>', 15
+    );
     drawPath();
   }
 
   function drawPath(){
     if(!map) return;
-    if(pathLine) map.removeLayer(pathLine);
-    const pts = [shotPoint];
-    trailPins.forEach(p => pts.push(p));
-    pts.push(estPoint);
-    pathLine = L.polyline(pts.map(p=>[p.lat,p.lng]), { className:'trail-line', color: getComputedStyle(document.documentElement).getPropertyValue('--gold'), weight:3, dashArray:'2,8', opacity:0.85 }).addTo(map);
+    if(pathLine){ pathLine.setMap(null); pathLine = null; }
+    const pts = [shotPoint, ...trailPins, estPoint];
+    pathLine = new google.maps.Polyline({
+      map,
+      path: pts.map(p => ({ lat: p.lat, lng: p.lng })),
+      strokeColor: '#A88B4A',
+      strokeOpacity: 0,
+      icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.85, scale: 3 }, offset: '0', repeat: '14px' }],
+    });
   }
 
   function redrawTrailPins(){
     if(!map) return;
-    trailLayerGroup.clearLayers();
+    trailLayerGroup.forEach(o => o.setMap(null));
+    trailLayerGroup = [];
     trailPins.forEach((p, i) => {
-      const icon = L.divIcon({ className:'', html:`<div class="pin pin-trail">${i+1}</div>`, iconSize:[24,24] });
-      L.marker([p.lat,p.lng], { icon }).addTo(trailLayerGroup);
+      const o = makeHtmlMarker(
+        { lat: p.lat, lng: p.lng },
+        `<div class="pin pin-trail">${i+1}</div>`, 12
+      );
+      trailLayerGroup.push(o);
     });
     if(shotPoint && estPoint) drawPath();
   }
 
   function fitAll(){
     if(!map) return;
-    const pts = [[userPos.lat,userPos.lng]];
-    if(shotPoint) pts.push([shotPoint.lat,shotPoint.lng]);
-    if(estPoint) pts.push([estPoint.lat,estPoint.lng]);
-    trailPins.forEach(p=>pts.push([p.lat,p.lng]));
-    if(pts.length>1) map.fitBounds(pts, { padding:[60,160] });
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend({ lat: userPos.lat, lng: userPos.lng });
+    if(shotPoint) bounds.extend({ lat: shotPoint.lat, lng: shotPoint.lng });
+    if(estPoint)  bounds.extend({ lat: estPoint.lat, lng: estPoint.lng });
+    trailPins.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
+    map.fitBounds(bounds, { top: 160, bottom: 240, left: 40, right: 40 });
   }
 
   // ---------- HUD / STATS ----------
@@ -633,8 +823,14 @@
       userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
       $('gpsDot').classList.add('live');
       $('gpsAcc').textContent = `±${Math.round(pos.coords.accuracy)}m`;
-      if(!map) initMap();
-      else updateSelfOnMap();
+      if(!map){
+        // Register a deferred init — fires immediately if Maps API already ready, else waits.
+        window._gpsReady = true;
+        window._doInitMap = initMap;
+        if(window._gmapsReady) initMap();
+      } else {
+        updateSelfOnMap();
+      }
       refreshStats();
     }, err=>{
       $('gpsDot').classList.remove('live');
@@ -746,8 +942,12 @@
   }
 
   // ---------- MODAL ----------
-  function openShotModal(){
-    dialBearing = heading !== null ? Math.round(heading) % 360 : 0;
+  function openShotModal(opts){
+    // If called from the sight, dialBearing is already set — preserve it.
+    // Otherwise auto-fill from phone heading if available.
+    if(!opts || !opts.keepBearing){
+      dialBearing = heading !== null ? Math.round(heading) % 360 : 0;
+    }
     buildDial();
     renderQuickDist();
     setDistance(40);
@@ -848,12 +1048,82 @@
       if(shotMarker){ map.removeLayer(shotMarker); shotMarker=null; }
       if(estMarker){ map.removeLayer(estMarker); estMarker=null; }
       if(pathLine){ map.removeLayer(pathLine); pathLine=null; }
-      if(trailLayerGroup) trailLayerGroup.clearLayers();
+      if(trailLayerGroup){ trailLayerGroup.forEach(o => o.setMap(null)); trailLayerGroup = []; }
     }
     refreshStats();
     refreshTrailList();
     toast('Cleared');
   }
+
+  // ---------- RIFLE SIGHT ----------
+  let sightBearing = 0;
+
+  (function buildSightTicks(){
+    const tg = document.getElementById('sightTicks');
+    for(let d = 0; d < 360; d += 10){
+      const big = d % 90 === 0;
+      const rad = (d - 90) * Math.PI / 180;
+      const r1 = 120, r2 = big ? 106 : 112;
+      const x1 = 150 + r1*Math.cos(rad), y1 = 150 + r1*Math.sin(rad);
+      const x2 = 150 + r2*Math.cos(rad), y2 = 150 + r2*Math.sin(rad);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+      line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+      line.setAttribute('stroke', big ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)');
+      line.setAttribute('stroke-width', big ? '2' : '1');
+      tg.appendChild(line);
+    }
+  })();
+
+  function setSightBearing(deg){
+    sightBearing = ((Math.round(deg) % 360) + 360) % 360;
+    // rotate the arm group
+    $('aimArm').setAttribute('transform', `rotate(${sightBearing}, 150, 150)`);
+    $('sightDeg').textContent = `${sightBearing}°`;
+    $('sightCard').textContent = bearingToCardinal(sightBearing);
+  }
+
+  function openSight(){
+    // initialise to current phone heading if available, else last used
+    setSightBearing(heading !== null ? heading : sightBearing);
+    $('sightOverlay').classList.add('active');
+    $('aimBtn').classList.add('active');
+  }
+
+  function closeSight(){
+    $('sightOverlay').classList.remove('active');
+    $('aimBtn').classList.remove('active');
+  }
+
+  // Drag the aim arm
+  (function wireSightDrag(){
+    const svg = $('sightSvg');
+    let dragging = false;
+
+    function bearingFromEvent(clientX, clientY){
+      const rect = svg.getBoundingClientRect();
+      const cx = rect.left + rect.width/2;
+      const cy = rect.top  + rect.height/2;
+      const dx = clientX - cx, dy = clientY - cy;
+      return (toDeg(Math.atan2(dx, -dy)) + 360) % 360; // atan2(x,−y) gives bearing from north
+    }
+
+    function start(e){ dragging = true; e.preventDefault(); }
+    function move(e){
+      if(!dragging) return;
+      const p = e.touches ? e.touches[0] : e;
+      setSightBearing(bearingFromEvent(p.clientX, p.clientY));
+    }
+    function end(){ dragging = false; }
+
+    // Allow drag anywhere on the SVG (not just the arm) for ease of use in the field
+    svg.addEventListener('mousedown',  start);
+    svg.addEventListener('touchstart', start, { passive:false });
+    window.addEventListener('mousemove',  move);
+    window.addEventListener('touchmove',  move, { passive:false });
+    window.addEventListener('mouseup',  end);
+    window.addEventListener('touchend', end);
+  })();
 
   // ---------- WIRE UP ----------
   $('grantBtn').onclick = () => {
@@ -877,7 +1147,14 @@
 
   $('markShotBtn').onclick = markShot;
   $('addBloodBtn').onclick = addBlood;
-  $('resetBtn').onclick = resetAll;
+  $('resetBtn').onclick    = resetAll;
+  $('aimBtn').onclick      = openSight;
+  $('sightCancel').onclick = closeSight;
+  $('sightConfirm').onclick = () => {
+    closeSight();
+    dialBearing = sightBearing;
+    openShotModal({ keepBearing: true });
+  };
   $('closeModal').onclick = closeShotModal;
   $('confirmShot').onclick = confirmShot;
   $('distSlider').oninput = updateDistLabel;
